@@ -1,0 +1,26 @@
+# Dependencies
+.psci_modules
+bower_components
+node_modules
+
+# Dot files
+.spago
+.psci
+.pulp-cache
+.purs-repl
+.psc-ide-port
+.cache
+
+# IDE files
+*.code-workspace
+.vscode
+
+# Generated
+output
+dce-output
+output-es
+*.lock
+*.map
+
+# Dist
+dist/*.js

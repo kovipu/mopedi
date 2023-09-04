@@ -1,0 +1,35 @@
+{
+  "name": "mopedi",
+  "version": "1.0.0",
+  "description": "A WeeChat relay client with Halogen",
+  "main": "index.js",
+  "scripts": {
+    "postinstall": "spago install",
+    "build": "spago build",
+    "test": "spago test",
+    "serve": "spago build && esbuild --bundle index.js --servedir=dist --outdir=dist"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/kovipu/mopedi.git"
+  },
+  "keywords": [
+    "PureScript",
+    "Halogen",
+    "IRC",
+    "WeeChat"
+  ],
+  "author": "Konsta Purtsi",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/kovipu/mopedi/issues"
+  },
+  "homepage": "https://github.com/kovipu/mopedi#readme",
+  "dependencies": {
+    "purescript": "^0.15.10",
+    "spago": "^0.21.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.19.2"
+  }
+}
