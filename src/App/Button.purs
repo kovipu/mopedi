@@ -1,5 +1,6 @@
-module App.Button where
+module Mopedi.App.Button where
 
+import Mopedi.AppM (class LogMessages, log)
 import Prelude
 import Halogen as H
 import Halogen.HTML as HH
@@ -11,7 +12,7 @@ type State
 data Action
   = Increment
 
-component :: forall q i o m. H.Component q i o m
+component :: forall q i o m. LogMessages m => H.Component q i o m
 component =
   H.mkComponent
     { initialState: \_ -> { count: 0 }
@@ -29,6 +30,8 @@ render state =
         [ HH.text "Click me" ]
     ]
 
-handleAction :: forall cs o m. Action → H.HalogenM State Action cs o m Unit
+handleAction :: forall cs o m. LogMessages m => Action → H.HalogenM State Action cs o m Unit
 handleAction = case _ of
-  Increment -> H.modify_ \st -> st { count = st.count + 1 }
+  Increment -> do
+    _ <- log "increment"
+    H.modify_ \st -> st { count = st.count + 1 }
