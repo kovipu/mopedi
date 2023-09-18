@@ -7,7 +7,8 @@
     "postinstall": "spago install",
     "build": "spago build",
     "test": "spago test",
-    "serve": "spago build && esbuild --bundle index.js --servedir=dist --outdir=dist"
+    "serve": "spago build && esbuild --bundle index.js --servedir=dist --outdir=dist",
+    "format": "purs-tidy format-in-place 'src/**/*.purs'"
   },
   "repository": {
     "type": "git",
@@ -27,6 +28,7 @@
   "homepage": "https://github.com/kovipu/mopedi#readme",
   "dependencies": {
     "purescript": "^0.15.10",
+    "purs-tidy": "^0.10.0",
     "spago": "^0.21.0"
   },
   "devDependencies": {

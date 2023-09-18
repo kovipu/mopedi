@@ -41,10 +41,6 @@ class Monad m <= LogMessages m where
 instance logMessagesHalogenM :: LogMessages m => LogMessages (HalogenM st act slots msg m) where
   logMessage = lift <<< logMessage
 
--- ugly renaming. TODO: find a nicer way.
-log :: forall m. LogMessages m => String -> m Unit
-log = logMessage
-
 -- Concrete implementations for the capabilites.
 instance logMessagesAppM :: LogMessages AppM where
   logMessage = liftEffect <<< Console.log
