@@ -13,13 +13,23 @@ to generate this file without the comments in this block.
 { name = "my-project"
 , dependencies =
   [ "aff"
+  , "aff-coroutines"
+  , "arraybuffer-types"
   , "console"
+  , "coroutines"
   , "effect"
+  , "either"
+  , "foldable-traversable"
+  , "foreign"
   , "halogen"
   , "halogen-store"
+  , "halogen-subscriptions"
+  , "maybe"
   , "prelude"
   , "safe-coerce"
   , "transformers"
+  , "web-events"
+  , "web-socket"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs" ]

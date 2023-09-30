@@ -1,4 +1,4 @@
-module Mopedi.App.Button where
+module Mopedi.RootComponent where
 
 import Mopedi.AppM (class LogMessages, logMessage)
 import Prelude

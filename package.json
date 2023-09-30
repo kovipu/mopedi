@@ -7,7 +7,7 @@
     "postinstall": "spago install",
     "build": "spago build",
     "test": "spago test",
-    "serve": "spago build && esbuild --bundle index.js --servedir=dist --outdir=dist",
+    "start": "spago build && esbuild --bundle index.js --servedir=dist --outdir=dist",
     "format": "purs-tidy format-in-place 'src/**/*.purs'"
   },
   "repository": {

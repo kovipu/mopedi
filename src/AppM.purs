@@ -31,7 +31,7 @@ derive newtype instance monadAppM :: Monad AppM
 derive newtype instance monadEffectAppM :: MonadEffect AppM
 derive newtype instance monadAffAppM :: MonadAff AppM
 
--- We're using halogen-store, so we can also derive a MonadStore.
+-- We're using halogen-store, so we can also derive MonadStore.
 derive newtype instance monadStoreAppM :: MonadStore Action Store AppM
 
 -- Capability type classes.
