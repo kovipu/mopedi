@@ -8,9 +8,13 @@ import Halogen.HTML.Events as HE
 
 type State = { count :: Int }
 
+data Query a = ReceiveMessage String a
+
+newtype Message = Message String
+
 data Action = Increment
 
-component :: forall q i o m. LogMessages m => H.Component q i o m
+component :: forall i m. LogMessages m => H.Component Query i Message m
 component =
   H.mkComponent
     { initialState: \_ -> { count: 0 }
@@ -28,8 +32,11 @@ render state =
         [ HH.text "Click me" ]
     ]
 
-handleAction :: forall cs o m. LogMessages m => Action → H.HalogenM State Action cs o m Unit
+handleAction :: forall m. LogMessages m => Action → H.HalogenM State Action () Message m Unit
 handleAction = case _ of
   Increment -> do
     _ <- logMessage "increment"
+    let password = "test"
+    H.raise $ Message $ "init password=" <> password <> ",compression=off\n"
+    H.raise $ Message $ "(hdata_buffers) hdata buffer:gui_buffers(*) number,full_name,short_name\n"
     H.modify_ \st -> st { count = st.count + 1 }

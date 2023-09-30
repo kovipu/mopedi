@@ -2,7 +2,7 @@ module Main where
 
 import Prelude
 
-import Mopedi.RootComponent (component)
+import Mopedi.RootComponent (component, Message(..), Query(..))
 import Mopedi.AppM (runAppM)
 import Mopedi.Store (Store)
 
@@ -25,16 +25,18 @@ import Web.Event.Event (Event)
 import Web.Event.EventTarget as Event
 import Web.Socket.Event.EventTypes (onMessage) as WebSocket
 import Web.Socket.Event.MessageEvent as WebSocket.MessageEvent
+import Web.Socket.BinaryType (BinaryType(ArrayBuffer))
 import Web.Socket.WebSocket (WebSocket)
-import Web.Socket.WebSocket (create, sendString, toEventTarget) as WebSocket
+import Web.Socket.WebSocket (create, sendString, toEventTarget, setBinaryType) as WebSocket
 
 main :: Effect Unit
 main = do
   let
     baseUrl :: String
-    baseUrl = "ws://localhost:8001"
+    baseUrl = "ws://localhost:8001/weechat"
 
   connection <- WebSocket.create baseUrl []
+  WebSocket.setBinaryType connection ArrayBuffer
 
   HA.runHalogenAff do
     body <- HA.awaitBody
@@ -53,8 +55,6 @@ main = do
     -- Connecting the consumer to the producer initializes both,
     -- feeding queries back to our component as messages are received.
     CR.runProcess (wsProducer connection $$ wsConsumer io.query)
-
-data Query a = ReceiveMessage String a
 
 -- A producer coroutine that emits messages that arrive from the websocket.
 wsProducer :: WebSocket -> Producer String Aff Unit
@@ -89,6 +89,6 @@ wsConsumer query = CR.consumer \msg -> do
 
 -- A handler for messages from our component IO that sends them to the server
 -- using the websocket
-wsSender :: WebSocket -> String -> Effect Unit
-wsSender socket = WebSocket.sendString socket
+wsSender :: WebSocket -> Message -> Effect Unit
+wsSender socket (Message msg) = WebSocket.sendString socket msg
 
