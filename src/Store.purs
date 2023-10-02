@@ -24,8 +24,8 @@ data Action
 
 reduce :: Store -> Action -> Store
 reduce store = case _ of
-  NewConnection socket
-  -> store { connection = Just socket }
+  NewConnection socket ->
+    store { connection = Just socket }
 
-  NewMessage msg
-  -> store { messages = msg : store.messages }
+  NewMessage msg ->
+    store { messages = msg : store.messages }

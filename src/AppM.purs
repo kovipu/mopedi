@@ -6,26 +6,20 @@ import Mopedi.Store (Store, Action(..), reduce)
 
 import Control.Monad.Trans.Class (lift)
 import Data.ArrayBuffer.Types (ArrayBuffer)
-import Data.Either (Either(..), hush)
-import Data.Maybe (Maybe(..), fromJust)
-import Data.Time.Duration (Milliseconds(..))
-import Partial.Unsafe (unsafePartial)
-import Effect (Effect)
+import Data.Maybe (Maybe(..))
 import Effect.Aff (Aff)
-import Effect.Aff (makeAff, error, effectCanceler, delay) as Aff
-import Effect.Aff.Class (class MonadAff, liftAff)
+import Effect.Aff.Class (class MonadAff)
 import Effect.Console as Console
 import Effect.Class (class MonadEffect, liftEffect)
 import Foreign (unsafeFromForeign)
-import Halogen (Component) as H
-import Halogen.Query.Event (eventListener) as H
-import Halogen.Subscription (Emitter)
+import Halogen as H
+import Halogen.Subscription as HS
+import Halogen.Query.Event as HQE
 import Halogen (HalogenM)
 import Halogen.Store.Monad (class MonadStore, StoreT, runStoreT, updateStore, getStore)
 import Safe.Coerce (coerce)
-import Web.Event.Event (Event)
-import Web.Event.EventTarget as Event
-import Web.Socket.Event.EventTypes (onMessage, onOpen) as WebSocket
+import Web.Event.Event (Event, EventType)
+import Web.Socket.Event.EventTypes (onMessage, onOpen, onClose, onError) as WebSocket
 import Web.Socket.Event.MessageEvent as WebSocket.MessageEvent
 import Web.Socket.BinaryType (BinaryType(ArrayBuffer))
 import Web.Socket.WebSocket (WebSocket)
@@ -59,55 +53,97 @@ class Monad m <= LogMessages m where
 instance logMessagesHalogenM :: LogMessages m => LogMessages (HalogenM st act slots msg m) where
   logMessage = lift <<< logMessage
 
-class Monad m <= WeeChat m where
-  initConnection :: String -> String -> m (Emitter ArrayBuffer)
+data WebSocketEvent
+  = WebSocketMessage ArrayBuffer
+  | WebSocketOpen Event
+  | WebSocketClose Event
+  | WebSocketError Event
 
-  sendMessage :: String -> m Unit
+class Monad m <= WeeChat m where
+  initConnection :: String -> m (HS.Emitter WebSocketEvent)
+
+  authenticate :: String -> m Unit
+
+  requestBuffers :: m Unit
+
+  requestHistory :: m Unit
 
 -- Concrete implementations for the capabilites.
 instance logMessagesAppM :: LogMessages AppM where
   logMessage = liftEffect <<< Console.log
 
 instance weeChatAppM :: WeeChat AppM where
-  initConnection :: String -> String -> AppM (Emitter ArrayBuffer)
-  initConnection addr pw = do
+  initConnection :: String -> AppM (HS.Emitter WebSocketEvent)
+  initConnection addr = do
     -- initialize web socket and authenticate.
     socket <- liftEffect $ WebSocket.create addr []
     liftEffect $ WebSocket.setBinaryType socket ArrayBuffer
 
-    let
-      target :: Event.EventTarget
-      target = WebSocket.toEventTarget socket
+    { emitter, listener } :: HS.SubscribeIO WebSocketEvent <- liftEffect HS.create
 
-    -- Wait for socket to open before doing anything.
-    liftAff $ Aff.makeAff \callback -> do
-      listener <- Event.eventListener \_ ->
-        callback $ Right unit
-      Event.addEventListener WebSocket.onOpen listener false target
+    liftEffect $ do
+      void $ HS.subscribe (makeMessageEmitter socket) \message ->
+        HS.notify listener $ WebSocketMessage message
 
-      pure $ Aff.effectCanceler do
-        Event.removeEventListener WebSocket.onOpen listener false target
+      void $ HS.subscribe (makeOpenEmitter socket) \openEvent ->
+        HS.notify listener $ WebSocketOpen openEvent
 
-    liftEffect $ WebSocket.sendString socket $ "init password=" <> pw <> ",compression=off\n"
+      void $ HS.subscribe (makeCloseEmitter socket) \closeInfo ->
+        HS.notify listener $ WebSocketClose closeInfo
+
+      void $ HS.subscribe (makeErrorEmitter socket) \err ->
+        HS.notify listener $ WebSocketError err
+
     updateStore $ NewConnection socket
 
-    let
-      handleEvent :: Event -> Maybe ArrayBuffer
-      handleEvent event = do
-        messageEvent <- WebSocket.MessageEvent.fromEvent event
-        let
-          foreignData = WebSocket.MessageEvent.data_ messageEvent
+    pure emitter
 
-          msg :: ArrayBuffer
-          msg = unsafeFromForeign foreignData
-        pure msg
+    where
+    makeMessageEmitter :: WebSocket -> HS.Emitter ArrayBuffer
+    makeMessageEmitter socket =
+      makeWebSocketEmitter WebSocket.onMessage socket readMessageEvent
 
-    pure $ H.eventListener WebSocket.onMessage target handleEvent
+    readMessageEvent :: Event -> Maybe ArrayBuffer
+    readMessageEvent event = do
+      messageEvent <- WebSocket.MessageEvent.fromEvent event
+      let
+        msg :: ArrayBuffer
+        msg = WebSocket.MessageEvent.data_ messageEvent
+          # unsafeFromForeign
+      pure msg
 
-  sendMessage :: String -> AppM Unit
-  sendMessage msg = do
-    { connection } <- getStore
-    case connection of
-      Nothing -> logMessage "Error! No WebSocket connection."
-      Just socket -> liftEffect $ WebSocket.sendString socket msg
+    makeOpenEmitter :: WebSocket -> HS.Emitter Event
+    makeOpenEmitter socket =
+      makeWebSocketEmitter WebSocket.onOpen socket Just
+
+    makeCloseEmitter :: WebSocket -> HS.Emitter Event
+    makeCloseEmitter socket =
+      makeWebSocketEmitter WebSocket.onClose socket Just
+
+    makeErrorEmitter :: WebSocket -> HS.Emitter Event
+    makeErrorEmitter socket =
+      makeWebSocketEmitter WebSocket.onError socket Just
+
+    makeWebSocketEmitter :: forall a. EventType -> WebSocket -> (Event -> Maybe a) -> HS.Emitter a
+    makeWebSocketEmitter eventType socket handler =
+      HQE.eventListener eventType (WebSocket.toEventTarget socket) handler
+
+  authenticate :: String -> AppM Unit
+  authenticate password =
+    sendMessage $ "init password=" <> password <> ",compression=off\n"
+
+  requestBuffers :: AppM Unit
+  requestBuffers =
+    sendMessage "(buffers) hdata buffer:gui_buffers(*) number,full_name,short_name\n" 
+
+  requestHistory :: AppM Unit
+  requestHistory =
+    sendMessage "(history) hdata buffer:gui_buffers(*)/own_lines/first_line(*)/data message,buffer,date,prefix\n"
+
+sendMessage :: String -> AppM Unit
+sendMessage msg = do
+  { connection } <- getStore
+  case connection of
+    Nothing -> logMessage "Error! No WebSocket connection."
+    Just socket -> liftEffect $ WebSocket.sendString socket msg
 

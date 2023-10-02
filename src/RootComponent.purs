@@ -2,31 +2,25 @@ module Mopedi.RootComponent where
 
 import Prelude
 
-import Mopedi.AppM (class LogMessages, logMessage, class WeeChat, initConnection, sendMessage)
+import Mopedi.AppM (class LogMessages, logMessage, WebSocketEvent(..), class WeeChat, initConnection, authenticate, requestBuffers, requestHistory)
 import Mopedi.Store (Action(..), Store) as Store
 
 import Control.Monad.Trans.Class (lift)
-import Data.Array (length)
-import Data.ArrayBuffer.Types (ArrayBuffer)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
-import Halogen.Store.Monad (class MonadStore, updateStore, getStore)
+import Halogen.Store.Monad (class MonadStore, updateStore)
 
 type State = { count :: Int }
 
-data Query a = ReceiveMessage String a
-
-newtype Message = Message String
-
-data Action = Increment | Initialize | WebSocketMessage ArrayBuffer
+data Action = Increment | Initialize | ReceiveEvent WebSocketEvent
 
 component
-  :: forall i m
+  :: forall i q o m
    . LogMessages m
   => WeeChat m
   => MonadStore Store.Action Store.Store m
-  => H.Component Query i Message m
+  => H.Component q i o m
 component = do
   H.mkComponent
     { initialState: \_ -> { count: 0 }
@@ -48,29 +42,37 @@ render state =
     ]
 
 handleAction
-  :: forall m
+  :: forall o m
    . LogMessages m
   => WeeChat m
   => MonadStore Store.Action Store.Store m
   => Action
-  -> H.HalogenM State Action () Message m Unit
+  -> H.HalogenM State Action () o m Unit
 handleAction = case _ of
   Increment -> do
     logMessage "increment"
-
-    -- TODO: remove debugging code.
-    lift $ sendMessage $ "(hdata_buffers) hdata buffer:gui_buffers(*) number,full_name,short_name\n"
-    { messages  } <- getStore
-    
-    logMessage $ show $ length messages
-
     H.modify_ \st -> st { count = st.count + 1 }
 
   Initialize -> do
-    emitter <- lift $ initConnection "ws://localhost:8001/weechat" "test"
-    H.subscribe' $ const $ map WebSocketMessage emitter
-    pure unit
+    emitter <- lift $ initConnection "ws://localhost:8001/weechat"
+    void $ H.subscribe (ReceiveEvent <$> emitter)
 
-  WebSocketMessage msg ->
-    updateStore $ Store.NewMessage msg
+  ReceiveEvent event ->
+    case event of
+      WebSocketMessage msg ->
+        updateStore $ Store.NewMessage msg
+
+      WebSocketOpen _ -> do
+        logMessage "Socket opened, authenticating."
+        lift $ do
+           authenticate "test"
+           requestBuffers
+           requestHistory
+
+      -- TODO: handle these.
+      WebSocketClose _ ->
+        logMessage "Socket closed."
+
+      WebSocketError _ ->
+        logMessage "Socket error."
 
