@@ -6,8 +6,7 @@ A fancy IRC client.
 
 ```shell
 npm install
-npm run build
-npm run serve
+npm start
 ```
 
 You might want a local WeeChat instance for testing.

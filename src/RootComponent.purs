@@ -65,9 +65,9 @@ handleAction = case _ of
       WebSocketOpen _ -> do
         logMessage "Socket opened, authenticating."
         lift $ do
-           authenticate "test"
-           requestBuffers
-           requestHistory
+          authenticate "test"
+          requestBuffers
+          requestHistory
 
       -- TODO: handle these.
       WebSocketClose _ ->

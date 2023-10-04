@@ -134,7 +134,7 @@ instance weeChatAppM :: WeeChat AppM where
 
   requestBuffers :: AppM Unit
   requestBuffers =
-    sendMessage "(buffers) hdata buffer:gui_buffers(*) number,full_name,short_name\n" 
+    sendMessage "(buffers) hdata buffer:gui_buffers(*) number,full_name,short_name\n"
 
   requestHistory :: AppM Unit
   requestHistory =
