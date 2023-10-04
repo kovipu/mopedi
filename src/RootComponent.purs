@@ -5,15 +5,22 @@ import Prelude
 import Mopedi.AppM (class LogMessages, logMessage, WebSocketEvent(..), class WeeChat, initConnection, authenticate, requestBuffers, requestHistory)
 import Mopedi.Store (Action(..), Store) as Store
 
+import Data.String (null)
 import Control.Monad.Trans.Class (lift)
+import DOM.HTML.Indexed.InputType (InputType(..))
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
+import Halogen.HTML.Properties as HP
 import Halogen.Store.Monad (class MonadStore, updateStore)
 
-type State = { count :: Int }
+type State = { address :: String, password :: String }
 
-data Action = Increment | Initialize | ReceiveEvent WebSocketEvent
+data Action
+  = AddressChange String
+  | PasswordChange String
+  | Initialize
+  | ReceiveEvent WebSocketEvent
 
 component
   :: forall i q o m
@@ -23,21 +30,26 @@ component
   => H.Component q i o m
 component = do
   H.mkComponent
-    { initialState: \_ -> { count: 0 }
+    { initialState: \_ -> { address: "", password: "" }
     , render
     , eval: H.mkEval H.defaultEval { handleAction = handleAction }
     }
 
 render :: forall cs m. State -> H.ComponentHTML Action cs m
-render state =
+render { address, password } =
   HH.div_
-    [ HH.p_
-        [ HH.text $ "You clicked " <> show state.count <> " times" ]
+    [ HH.input
+        [ HP.value address
+        , HE.onValueInput \addr -> AddressChange addr
+        ]
+    , HH.input
+        [ HP.value password
+        , HE.onValueInput \pw -> PasswordChange pw
+        , HP.type_ InputPassword
+        ]
     , HH.button
-        [ HE.onClick \_ -> Increment ]
-        [ HH.text "Click me" ]
-    , HH.button
-        [ HE.onClick \_ -> Initialize ]
+        [ HP.disabled $ (null address) || (null password)
+        , HE.onClick \_ -> Initialize ]
         [ HH.text "Connect" ]
     ]
 
@@ -49,12 +61,17 @@ handleAction
   => Action
   -> H.HalogenM State Action () o m Unit
 handleAction = case _ of
-  Increment -> do
-    logMessage "increment"
-    H.modify_ \st -> st { count = st.count + 1 }
+  AddressChange address ->
+    H.modify_ \st -> st { address = address }
+
+  PasswordChange password ->
+    H.modify_ \st -> st { password = password }
 
   Initialize -> do
-    emitter <- lift $ initConnection "ws://localhost:8001/weechat"
+    { address } <- H.get
+    -- Initializer WebSocket connection
+    emitter <- lift $ initConnection address
+    -- Send WebSocket events to the store.  
     void $ H.subscribe (ReceiveEvent <$> emitter)
 
   ReceiveEvent event ->
@@ -64,8 +81,9 @@ handleAction = case _ of
 
       WebSocketOpen _ -> do
         logMessage "Socket opened, authenticating."
+        { password } <- H.get
         lift $ do
-          authenticate "test"
+          authenticate password
           requestBuffers
           requestHistory
 
