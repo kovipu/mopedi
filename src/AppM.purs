@@ -2,11 +2,14 @@ module Mopedi.AppM where
 
 import Prelude
 
-import Mopedi.Store (Store, Action(..), reduce)
+import Mopedi.Store (ConnectionState(..))
 
 import Control.Monad.Trans.Class (lift)
 import Data.ArrayBuffer.Types (ArrayBuffer)
 import Data.Maybe (Maybe(..))
+import Data.Tuple (Tuple)
+import Data.Tuple.Nested ((/\))
+import Effect (Effect)
 import Effect.Aff (Aff)
 import Effect.Aff.Class (class MonadAff)
 import Effect.Console as Console
@@ -26,10 +29,10 @@ import Web.Socket.WebSocket (WebSocket)
 import Web.Socket.WebSocket (create, sendString, toEventTarget, setBinaryType) as WebSocket
 
 -- A custom application monad that provides the capabilities we need.
-newtype AppM a = AppM (StoreT Action Store Aff a)
+newtype AppM a = AppM (StoreT Unit Unit Aff a)
 
-runAppM :: forall q i o. Store -> H.Component q i o AppM -> Aff (H.Component q i o Aff)
-runAppM store = runStoreT store reduce <<< coerce
+runAppM :: forall q i o. Unit -> H.Component q i o AppM -> Aff (H.Component q i o Aff)
+runAppM store = runStoreT store const <<< coerce
 
 -- To be a monad, a type must implement these type classes:
 -- Functor, Apply, Applicative, Bind and Monad.
@@ -44,7 +47,7 @@ derive newtype instance monadEffectAppM :: MonadEffect AppM
 derive newtype instance monadAffAppM :: MonadAff AppM
 
 -- We're using halogen-store, so we can also derive MonadStore.
-derive newtype instance monadStoreAppM :: MonadStore Action Store AppM
+derive newtype instance monadStoreAppM :: MonadStore Unit Unit AppM
 
 -- Capability type classes.
 class Monad m <= LogMessages m where
@@ -60,90 +63,67 @@ data WebSocketEvent
   | WebSocketError Event
 
 class Monad m <= WeeChat m where
-  initConnection :: String -> m (HS.Emitter WebSocketEvent)
+  initConnection :: String -> m (Tuple WebSocket (HS.Emitter WebSocketEvent))
 
-  authenticate :: String -> m Unit
+  authenticate :: WebSocket -> String -> m Unit
 
-  requestBuffers :: m Unit
+  requestBuffers :: WebSocket -> m Unit
 
-  requestHistory :: m Unit
+  requestHistory :: WebSocket -> m Unit
 
 -- Concrete implementations for the capabilites.
 instance logMessagesAppM :: LogMessages AppM where
   logMessage = liftEffect <<< Console.log
 
 instance weeChatAppM :: WeeChat AppM where
-  initConnection :: String -> AppM (HS.Emitter WebSocketEvent)
+  initConnection :: String -> AppM (Tuple WebSocket (HS.Emitter WebSocketEvent))
   initConnection addr = do
-    -- initialize web socket and authenticate.
     socket <- liftEffect $ WebSocket.create addr []
     liftEffect $ WebSocket.setBinaryType socket ArrayBuffer
 
     { emitter, listener } :: HS.SubscribeIO WebSocketEvent <- liftEffect HS.create
 
+    let
+      makeWebSocketEmitter :: forall a. EventType -> WebSocket -> (Event -> Maybe a) -> HS.Emitter a
+      makeWebSocketEmitter eventType socket' handler =
+        HQE.eventListener eventType (WebSocket.toEventTarget socket') handler
+
+      subscribe :: forall a. EventType -> (a -> WebSocketEvent) -> (Event -> Maybe a) -> Effect Unit
+      subscribe eventType toSocketEvent readEvent =
+        void
+          $ HS.subscribe
+              (makeWebSocketEmitter eventType socket readEvent)
+          $ HS.notify listener <<< toSocketEvent
+
+      readMessageEvent :: Event -> Maybe ArrayBuffer
+      readMessageEvent event = do
+        messageEvent <- WebSocket.MessageEvent.fromEvent event
+        let
+          msg :: ArrayBuffer
+          msg = WebSocket.MessageEvent.data_ messageEvent
+            # unsafeFromForeign
+        pure msg
+
     liftEffect $ do
-      void $ HS.subscribe (makeMessageEmitter socket) \message ->
-        HS.notify listener $ WebSocketMessage message
+      subscribe WebSocket.onOpen WebSocketOpen Just
+      subscribe WebSocket.onClose WebSocketClose Just
+      subscribe WebSocket.onError WebSocketError Just
+      subscribe WebSocket.onMessage WebSocketMessage readMessageEvent
 
-      void $ HS.subscribe (makeOpenEmitter socket) \openEvent ->
-        HS.notify listener $ WebSocketOpen openEvent
+    pure $ socket /\ emitter
 
-      void $ HS.subscribe (makeCloseEmitter socket) \closeInfo ->
-        HS.notify listener $ WebSocketClose closeInfo
+  authenticate :: WebSocket -> String -> AppM Unit
+  authenticate socket password =
+    WebSocket.sendString socket ("init password=" <> password <> ",compression=off\n")
+      # liftEffect
 
-      void $ HS.subscribe (makeErrorEmitter socket) \err ->
-        HS.notify listener $ WebSocketError err
+  requestBuffers :: WebSocket -> AppM Unit
+  requestBuffers socket =
+    WebSocket.sendString socket "(buffers) hdata buffer:gui_buffers(*) number,full_name,short_name\n"
+      # liftEffect
 
-    updateStore $ NewConnection socket
-
-    pure emitter
-
-    where
-    makeMessageEmitter :: WebSocket -> HS.Emitter ArrayBuffer
-    makeMessageEmitter socket =
-      makeWebSocketEmitter WebSocket.onMessage socket readMessageEvent
-
-    readMessageEvent :: Event -> Maybe ArrayBuffer
-    readMessageEvent event = do
-      messageEvent <- WebSocket.MessageEvent.fromEvent event
-      let
-        msg :: ArrayBuffer
-        msg = WebSocket.MessageEvent.data_ messageEvent
-          # unsafeFromForeign
-      pure msg
-
-    makeOpenEmitter :: WebSocket -> HS.Emitter Event
-    makeOpenEmitter socket =
-      makeWebSocketEmitter WebSocket.onOpen socket Just
-
-    makeCloseEmitter :: WebSocket -> HS.Emitter Event
-    makeCloseEmitter socket =
-      makeWebSocketEmitter WebSocket.onClose socket Just
-
-    makeErrorEmitter :: WebSocket -> HS.Emitter Event
-    makeErrorEmitter socket =
-      makeWebSocketEmitter WebSocket.onError socket Just
-
-    makeWebSocketEmitter :: forall a. EventType -> WebSocket -> (Event -> Maybe a) -> HS.Emitter a
-    makeWebSocketEmitter eventType socket handler =
-      HQE.eventListener eventType (WebSocket.toEventTarget socket) handler
-
-  authenticate :: String -> AppM Unit
-  authenticate password =
-    sendMessage $ "init password=" <> password <> ",compression=off\n"
-
-  requestBuffers :: AppM Unit
-  requestBuffers =
-    sendMessage "(buffers) hdata buffer:gui_buffers(*) number,full_name,short_name\n"
-
-  requestHistory :: AppM Unit
-  requestHistory =
-    sendMessage "(history) hdata buffer:gui_buffers(*)/own_lines/first_line(*)/data message,buffer,date,prefix\n"
-
-sendMessage :: String -> AppM Unit
-sendMessage msg = do
-  { connection } <- getStore
-  case connection of
-    Nothing -> logMessage "Error! No WebSocket connection."
-    Just socket -> liftEffect $ WebSocket.sendString socket msg
+  requestHistory :: WebSocket -> AppM Unit
+  requestHistory socket =
+    WebSocket.sendString socket "(history) hdata buffer:gui_buffers(*)/own_lines/first_line(*)/data message,buffer,date,prefix\n"
+      # liftEffect
 

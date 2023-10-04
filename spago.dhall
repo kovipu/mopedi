@@ -16,6 +16,7 @@ to generate this file without the comments in this block.
   , "arraybuffer-types"
   , "arrays"
   , "console"
+  , "dom-indexed"
   , "effect"
   , "foreign"
   , "halogen"
@@ -24,7 +25,9 @@ to generate this file without the comments in this block.
   , "maybe"
   , "prelude"
   , "safe-coerce"
+  , "strings"
   , "transformers"
+  , "tuples"
   , "web-events"
   , "web-socket"
   ]

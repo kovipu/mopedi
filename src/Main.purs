@@ -4,7 +4,6 @@ import Prelude
 
 import Mopedi.RootComponent (component)
 import Mopedi.AppM (runAppM)
-import Mopedi.Store as Store
 
 import Effect (Effect)
 import Halogen.Aff as HA
@@ -15,6 +14,6 @@ main = do
   HA.runHalogenAff do
     body <- HA.awaitBody
 
-    rootComponent <- runAppM Store.initialStore component
+    rootComponent <- runAppM unit component
 
     runUI rootComponent unit body
