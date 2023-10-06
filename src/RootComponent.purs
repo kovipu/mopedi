@@ -4,13 +4,14 @@ import Prelude
 
 import Mopedi.AppM (class LogMessages, logMessage, WebSocketEvent(..), class WeeChat, initConnection, authenticate, requestBuffers, requestHistory)
 import Mopedi.Store (ConnectionState(..))
+import Mopedi.WeeChatParser (parseWeeChatMsg, WeeChatMessage(..), Buffer)
 
 import Control.Monad.Trans.Class (lift)
-import Data.Array ((:))
-import Data.ArrayBuffer.Types (ArrayBuffer)
+import Data.Either (Either(..))
 import Data.Tuple.Nested ((/\))
 import Data.String (null)
 import DOM.HTML.Indexed.InputType (InputType(..))
+import Effect.Class (class MonadEffect, liftEffect)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
@@ -20,15 +21,15 @@ type State =
   { address :: String
   , password :: String
   , connection :: ConnectionState
-  , messages :: Array ArrayBuffer
+  , buffers :: Array Buffer
   }
 
 initialState :: State
 initialState =
-  { address: ""
-  , password: ""
+  { address: "ws://localhost:8001/weechat"
+  , password: "test"
   , connection: Disconnected
-  , messages: []
+  , buffers: []
   }
 
 data Action
@@ -41,6 +42,7 @@ component
   :: forall i q o m
    . LogMessages m
   => WeeChat m
+  => MonadEffect m
   => H.Component q i o m
 component = do
   H.mkComponent
@@ -50,36 +52,44 @@ component = do
     }
 
 render :: forall cs m. State -> H.ComponentHTML Action cs m
-render { address, password, connection } =
+render state@{ connection } =
+  case connection of
+    Connected _socket ->
+      HH.p_ [ HH.text "Connected!" ]
+    _ ->
+      loginForm state
+
+loginForm :: forall cs m. State -> H.ComponentHTML Action cs m
+loginForm { address, password, connection } =
   HH.div_
     [ HH.input
         [ HP.value address
-        , HE.onValueInput \addr -> AddressChange addr
+        , HE.onValueInput AddressChange
         ]
     , HH.input
         [ HP.value password
-        , HE.onValueInput \pw -> PasswordChange pw
+        , HE.onValueInput PasswordChange
         , HP.type_ InputPassword
         ]
     , HH.button
         [ HP.disabled $ (null address) || (null password)
-        , HE.onClick \_ -> Initialize
+        , HE.onClick $ const Initialize
         ]
         [ HH.text "Connect" ]
-    , HH.p
-        []
+    , HH.p_
         [ HH.text
             $ case connection of
                 Disconnected -> "Disconnected"
                 Connecting -> "Connecting..."
                 Connected _ -> "Connected"
-                Error -> "Error!?"
+                Error -> "Highkey cringe af."
         ]
     ]
 
 handleAction
   :: forall o m
    . LogMessages m
+  => MonadEffect m
   => WeeChat m
   => Action
   -> H.HalogenM State Action () o m Unit
@@ -103,8 +113,14 @@ handleAction = case _ of
 
   ReceiveEvent event ->
     case event of
-      WebSocketMessage msg ->
-        H.modify_ \st -> st { messages = msg : st.messages }
+      WebSocketMessage msg -> do
+        parsedMsg <- liftEffect $ parseWeeChatMsg msg
+        case parsedMsg of
+          Left error ->
+            logMessage $ "Failed to parse WeeChatMessage" <> show error
+
+          Right (Buffers buffers) ->
+            H.modify_ $ _ { buffers = buffers }
 
       WebSocketOpen _ -> do
         logMessage "Socket opened, authenticating."
