@@ -61,18 +61,22 @@ render state@{ connection } =
 
 loginForm :: forall cs m. State -> H.ComponentHTML Action cs m
 loginForm { address, password, connection } =
-  HH.div_
+  HH.div
+    [ HP.class_ $ HH.ClassName "flex flex-col gap-2 w-96" ]
     [ HH.input
-        [ HP.value address
+        [ HP.class_ $ HH.ClassName "p-2 rounded"
+        , HP.value address
         , HE.onValueInput AddressChange
         ]
     , HH.input
-        [ HP.value password
+        [ HP.class_ $ HH.ClassName "p-2 rounded"
+        , HP.value password
         , HE.onValueInput PasswordChange
         , HP.type_ InputPassword
         ]
     , HH.button
-        [ HP.disabled $ (null address) || (null password)
+        [ HP.class_ $ HH.ClassName "p-2 border-2 border-white rounded font-bold hover:bg-gray-100"
+        , HP.disabled $ (null address) || (null password)
         , HE.onClick $ const Initialize
         ]
         [ HH.text "Connect" ]

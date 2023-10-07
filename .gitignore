@@ -24,3 +24,4 @@ output-es
 
 # Dist
 dist/*.js
+dist/*.css
