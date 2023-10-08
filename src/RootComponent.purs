@@ -8,6 +8,7 @@ import Mopedi.WeeChatParser (parseWeeChatMsg, WeeChatMessage(..), Buffer)
 
 import Control.Monad.Trans.Class (lift)
 import Data.Either (Either(..))
+import Data.Maybe (fromMaybe)
 import Data.Tuple.Nested ((/\))
 import Data.String (null)
 import DOM.HTML.Indexed.InputType (InputType(..))
@@ -55,9 +56,30 @@ render :: forall cs m. State -> H.ComponentHTML Action cs m
 render state@{ connection } =
   case connection of
     Connected _socket ->
-      HH.p_ [ HH.text "Connected!" ]
+      HH.div
+        [ HP.class_ $ HH.ClassName "h-screen w-screen flex" ]
+        [ bufferList state
+        , chatContainer state
+        ]
     _ ->
       loginForm state
+
+bufferList :: forall cs m. State -> H.ComponentHTML Action cs m
+bufferList { buffers } =
+  HH.div
+    [ HP.class_ $ HH.ClassName "h-full w-56 flex flex-col p-2"]
+    $ map bufferButton buffers
+  where
+    bufferButton { shortName, fullName } =
+      HH.button
+        []
+        [ HH.text $ fromMaybe fullName shortName ]
+
+chatContainer :: forall cs m. State -> H.ComponentHTML Action cs m
+chatContainer _ =
+  HH.div
+    [ HP.class_ $ HH.ClassName "h-full w-full flex flex-col bg-white w-full" ]
+    []
 
 loginForm :: forall cs m. State -> H.ComponentHTML Action cs m
 loginForm { address, password, connection } =
