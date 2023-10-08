@@ -4,10 +4,14 @@ import Prelude
 
 import Mopedi.AppM (class LogMessages, logMessage, WebSocketEvent(..), class WeeChat, initConnection, authenticate, requestBuffers, requestHistory)
 import Mopedi.Store (ConnectionState(..))
-import Mopedi.WeeChatParser (parseWeeChatMsg, WeeChatMessage(..), Buffer)
+import Mopedi.WeeChatParser (parseWeeChatMsg, WeeChatMessage(..), HistoryRow)
 
 import Control.Monad.Trans.Class (lift)
+import Data.Array as Array
 import Data.Either (Either(..))
+import Data.Foldable (foldl)
+import Data.Map (Map)
+import Data.Map as Map
 import Data.Maybe (fromMaybe)
 import Data.Tuple.Nested ((/\))
 import Data.String (null)
@@ -22,7 +26,13 @@ type State =
   { address :: String
   , password :: String
   , connection :: ConnectionState
-  , buffers :: Array Buffer
+  , buffers :: Map String BufferState
+  }
+
+type BufferState =
+  { number :: Int
+  , name :: String
+  , history :: Array HistoryRow
   }
 
 initialState :: State
@@ -30,7 +40,7 @@ initialState =
   { address: "ws://localhost:8001/weechat"
   , password: "test"
   , connection: Disconnected
-  , buffers: []
+  , buffers: Map.empty
   }
 
 data Action
@@ -67,13 +77,18 @@ render state@{ connection } =
 bufferList :: forall cs m. State -> H.ComponentHTML Action cs m
 bufferList { buffers } =
   HH.div
-    [ HP.class_ $ HH.ClassName "h-full w-56 flex flex-col p-2"]
-    $ map bufferButton buffers
+    [ HP.class_ $ HH.ClassName "h-full w-56 flex flex-col p-2" ]
+    bufferButtons
   where
-    bufferButton { shortName, fullName } =
-      HH.button
-        []
-        [ HH.text $ fromMaybe fullName shortName ]
+  bufferButtons =
+    Array.fromFoldable buffers
+      # Array.sortBy (\a b -> compare a.number b.number)
+      # map bufferButton
+
+  bufferButton { name } =
+    HH.button
+      []
+      [ HH.text name ]
 
 chatContainer :: forall cs m. State -> H.ComponentHTML Action cs m
 chatContainer _ =
@@ -146,7 +161,24 @@ handleAction = case _ of
             logMessage $ "Failed to parse WeeChatMessage" <> show error
 
           Right (Buffers buffers) ->
-            H.modify_ $ _ { buffers = buffers }
+            H.modify_ $ _ { buffers = bufferState }
+            where
+            bufferState :: Map String BufferState
+            bufferState = foldl
+              ( \acc { ppath, number, fullName, shortName } ->
+                  Map.insert
+                    ppath
+                    { number
+                    , name: fromMaybe fullName shortName
+                    , history: []
+                    }
+                    acc
+              )
+              Map.empty
+              buffers
+
+          Right (History history) ->
+            logMessage $ "History parsed " <> show history
 
       WebSocketOpen _ -> do
         logMessage "Socket opened, authenticating."
