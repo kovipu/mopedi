@@ -8,12 +8,10 @@ import Mopedi.WeeChatParser (parseWeeChatMsg, WeeChatMessage(..), HistoryRow)
 
 import Control.Monad.Trans.Class (lift)
 import Data.Array as Array
-import Data.Array ((:))
 import Data.Either (Either(..))
 import Data.Foldable (foldl, find)
 import Data.Map (Map)
 import Data.Map as Map
-import Debug (spy)
 import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple.Nested ((/\))
 import Data.String (null)
@@ -35,6 +33,7 @@ type State =
 type BufferState =
   { number :: Int
   , name :: String
+  , ppath :: String
   , history :: Array HistoryRow
   }
 
@@ -52,6 +51,7 @@ data Action
   | PasswordChange String
   | Initialize
   | ReceiveEvent WebSocketEvent
+  | ChangeBuffer String
 
 component
   :: forall i q o m
@@ -79,7 +79,7 @@ render state@{ connection } =
       loginForm state
 
 bufferList :: forall cs m. State -> H.ComponentHTML Action cs m
-bufferList { buffers } =
+bufferList { buffers, selectedBuffer } =
   HH.div
     [ HP.class_ $ HH.ClassName "h-full w-56 flex flex-col p-2" ]
     bufferButtons
@@ -89,21 +89,27 @@ bufferList { buffers } =
       # Array.sortBy (\a b -> compare a.number b.number)
       # map bufferButton
 
-  bufferButton { name } =
+  bufferButton { name, ppath } =
     HH.button
-      []
+      [ HP.class_ $ HH.ClassName $
+          if selected then "bg-gray-300 rounded"
+          else ""
+      , HE.onClick $ const $ ChangeBuffer ppath
+      ]
       [ HH.text name ]
+    where
+    selected = selectedBuffer == Just ppath
 
 chatContainer :: forall cs m. State -> H.ComponentHTML Action cs m
 chatContainer { selectedBuffer, buffers } =
   HH.div
     [ HP.class_ $ HH.ClassName "h-full w-full flex flex-col bg-white w-full" ]
-    history
+    messages
   where
   selected =
     (\b -> Map.lookup b buffers) <$> selectedBuffer
 
-  history =
+  messages =
     case selected of
       Nothing -> [ HH.text "No buffer selected." ]
       Just Nothing -> [ HH.text "Invalid selected buffer!" ]
@@ -171,6 +177,9 @@ handleAction = case _ of
     -- Send WebSocket events as actions.  
     void $ H.subscribe (ReceiveEvent <$> emitter)
 
+  ChangeBuffer ppath ->
+    H.modify_ $ _ { selectedBuffer = Just ppath }
+
   ReceiveEvent event ->
     case event of
       WebSocketMessage msg -> do
@@ -194,6 +203,7 @@ handleAction = case _ of
                     (\prev new -> new { history = prev.history })
                     ppath
                     { number
+                    , ppath
                     , name: fromMaybe fullName shortName
                     , history: []
                     }
@@ -222,7 +232,11 @@ handleAction = case _ of
                     Map.insertWith
                       (\prev new -> prev { history = prev.history <> new.history })
                       histRow.buffer
-                      { name: "Unknown buffer", number: 99, history: [ histRow ] }
+                      { name: "Unknown buffer"
+                      , ppath: histRow.buffer
+                      , number: 99
+                      , history: [ histRow ]
+                      }
                       acc
                 )
                 bufferState
