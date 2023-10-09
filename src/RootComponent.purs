@@ -8,11 +8,13 @@ import Mopedi.WeeChatParser (parseWeeChatMsg, WeeChatMessage(..), HistoryRow)
 
 import Control.Monad.Trans.Class (lift)
 import Data.Array as Array
+import Data.Array ((:))
 import Data.Either (Either(..))
-import Data.Foldable (foldl)
+import Data.Foldable (foldl, find)
 import Data.Map (Map)
 import Data.Map as Map
-import Data.Maybe (fromMaybe)
+import Debug (spy)
+import Data.Maybe (Maybe(..), fromMaybe)
 import Data.Tuple.Nested ((/\))
 import Data.String (null)
 import DOM.HTML.Indexed.InputType (InputType(..))
@@ -26,6 +28,7 @@ type State =
   { address :: String
   , password :: String
   , connection :: ConnectionState
+  , selectedBuffer :: Maybe String
   , buffers :: Map String BufferState
   }
 
@@ -40,6 +43,7 @@ initialState =
   { address: "ws://localhost:8001/weechat"
   , password: "test"
   , connection: Disconnected
+  , selectedBuffer: Nothing
   , buffers: Map.empty
   }
 
@@ -91,10 +95,25 @@ bufferList { buffers } =
       [ HH.text name ]
 
 chatContainer :: forall cs m. State -> H.ComponentHTML Action cs m
-chatContainer _ =
+chatContainer { selectedBuffer, buffers } =
   HH.div
     [ HP.class_ $ HH.ClassName "h-full w-full flex flex-col bg-white w-full" ]
-    []
+    history
+  where
+  selected =
+    (\b -> Map.lookup b buffers) <$> selectedBuffer
+
+  history =
+    case selected of
+      Nothing -> [ HH.text "No buffer selected." ]
+      Just Nothing -> [ HH.text "Invalid selected buffer!" ]
+      Just (Just { history }) ->
+        map
+          ( \{ message } -> HH.p
+              [ HP.class_ $ HH.ClassName "px-2 py-1" ]
+              [ HH.text message ]
+          )
+          history
 
 loginForm :: forall cs m. State -> H.ComponentHTML Action cs m
 loginForm { address, password, connection } =
@@ -158,15 +177,21 @@ handleAction = case _ of
         parsedMsg <- liftEffect $ parseWeeChatMsg msg
         case parsedMsg of
           Left error ->
-            logMessage $ "Failed to parse WeeChatMessage" <> show error
+            logMessage $ "Failed to parse WeeChatMessage " <> show error
 
-          Right (Buffers buffers) ->
-            H.modify_ $ _ { buffers = bufferState }
+          Right (Buffers newBuffers) ->
+            H.modify_
+              ( \st@{ buffers } -> st
+                  { buffers = insertBuffers buffers
+                  , selectedBuffer = selectedBuffer
+                  }
+              )
             where
-            bufferState :: Map String BufferState
-            bufferState = foldl
+            insertBuffers :: Map String BufferState -> Map String BufferState
+            insertBuffers prevState = foldl
               ( \acc { ppath, number, fullName, shortName } ->
-                  Map.insert
+                  Map.insertWith
+                    (\prev new -> new { history = prev.history })
                     ppath
                     { number
                     , name: fromMaybe fullName shortName
@@ -174,11 +199,34 @@ handleAction = case _ of
                     }
                     acc
               )
-              Map.empty
-              buffers
+              prevState
+              newBuffers
+
+            -- Select the first buffer by default
+            selectedBuffer :: Maybe String
+            selectedBuffer =
+              newBuffers
+                # find (\{ number } -> number == 1)
+                # map _.ppath
 
           Right (History history) ->
-            logMessage $ "History parsed " <> show history
+            H.modify_
+              ( \st@{ buffers } ->
+                  st { buffers = insertHistory buffers }
+              )
+            where
+            insertHistory :: Map String BufferState -> Map String BufferState
+            insertHistory bufferState =
+              foldl
+                ( \acc histRow ->
+                    Map.insertWith
+                      (\prev new -> prev { history = prev.history <> new.history })
+                      histRow.buffer
+                      { name: "Unknown buffer", number: 99, history: [ histRow ] }
+                      acc
+                )
+                bufferState
+                history
 
       WebSocketOpen _ -> do
         logMessage "Socket opened, authenticating."

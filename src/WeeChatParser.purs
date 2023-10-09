@@ -103,7 +103,7 @@ parseNonEmptyString =
 parseString :: Parser (Maybe String)
 parseString = do
   length <- anyInt32be
-  -- length 0xFFFF means Null string in WeeChat.
+  -- length 0xFFFFFFFF means Null string in WeeChat.
   case length of
     -1 -> pure Nothing
     0 -> pure $ Just ""
