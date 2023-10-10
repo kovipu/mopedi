@@ -4,23 +4,29 @@ import Prelude
 
 import Control.Alternative (empty, guard)
 import Control.Monad.Except (ExceptT(..))
+import Control.Monad.Error.Class (liftEither)
 import Control.Monad.Trans.Class (lift)
 import Data.Either (Either(..))
-import Data.Array (length)
+import Data.List (uncons)
+import Data.Array (length, fromFoldable)
 import Data.ArrayBuffer.DataView as DataView
 import Data.ArrayBuffer.Cast (toUint8Array)
 import Data.ArrayBuffer.Types (ArrayBuffer, DataView)
 import Data.Generic.Rep (class Generic)
+import Data.Int (fromString)
 import Data.Maybe (Maybe(..), maybe, fromMaybe)
 import Data.Show.Generic (genericShow)
 import Data.String (split)
 import Data.String.Pattern (Pattern(..))
-import Debug (spy)
+import Data.String.CodePoints (codePointFromChar)
+import Data.Traversable (traverse)
 import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Exception (catchException, message)
-import Parsing (runParserT, fail, ParserT, ParseError, liftExceptT)
-import Parsing.Combinators (replicateA)
+import Parsing (runParserT, runParser, fail, ParserT, ParseError, liftExceptT, liftMaybe)
+import Parsing.Combinators (replicateA, sepBy, optional)
+import Parsing.String as String
+import Parsing.String.Basic (takeWhile)
 import Parsing.DataView (anyInt32be, anyInt8, satisfyInt8, takeN)
 import Web.Encoding.TextDecoder as TextDecoder
 import Web.Encoding.UtfLabel as UtfLabel
@@ -40,11 +46,13 @@ type Buffer =
   }
 
 type HistoryRow =
-  { message :: String
+  { message :: Array ColoredString
   , buffer :: String
   , date :: String
   , prefix :: Maybe String
   }
+
+type ColoredString = { color :: Int, content :: String }
 
 parseWeeChatMsg :: ArrayBuffer -> Effect (Either ParseError WeeChatMessage)
 parseWeeChatMsg msg = runParserT (DataView.whole msg) parser
@@ -89,7 +97,7 @@ parseHistory = do
   count <- anyInt32be
   history :: Array HistoryRow <- replicateA count do
     _ppath :: Array String <- replicateA pathLength parseShortString
-    message <- parseNonEmptyString
+    message <- parseColoredString
     buffer <- parseShortString
     date <- parseShortString
     prefix <- parseString
@@ -120,4 +128,34 @@ parseStringN length = do
   textDecoder <- lift $ liftEffect $ TextDecoder.new UtfLabel.utf8
   liftExceptT $ ExceptT $ catchException (pure <<< Left <<< message) do
     Right <$> TextDecoder.decode stringarray textDecoder
+
+parseColoredString :: Parser (Array ColoredString)
+parseColoredString = do
+  str <- parseNonEmptyString
+  liftEither $ runParser str do
+    let
+      sep = ''
+      sepCodePoint = codePointFromChar sep
+      parseTillSep = takeWhile (_ /= sepCodePoint)
+    arr <- parseTillSep `sepBy` String.char sep
+    { head, tail } <- liftMaybe (const "impossible!") $ uncons arr
+    let
+      headColors =
+        case head of
+          "" -> []
+          s -> [ { color: 0, content: s } ]
+    tailColors <- liftEither $ traverse (flip runParser parseColor) tail
+    pure $ headColors <> fromFoldable tailColors
+  where
+  parseColor = do
+    -- What does the star do?
+    _ <- optional $ String.char '*'
+    -- What does the F do?
+    _ <- optional $ do
+      _ <- String.char 'F'
+      optional $ String.char '1'
+    colorCode <- String.takeN 2
+    color <- liftMaybe (const $ "Color was not an integer: " <> colorCode) $ fromString colorCode
+    content <- String.rest
+    pure { color, content }
 

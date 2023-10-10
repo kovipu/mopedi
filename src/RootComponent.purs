@@ -103,7 +103,7 @@ bufferList { buffers, selectedBuffer } =
 chatContainer :: forall cs m. State -> H.ComponentHTML Action cs m
 chatContainer { selectedBuffer, buffers } =
   HH.div
-    [ HP.class_ $ HH.ClassName "h-full w-full flex flex-col bg-white w-full" ]
+    [ HP.class_ $ HH.ClassName "h-full w-full flex flex-col bg-white w-full overflow-y-auto" ]
     messages
   where
   selected =
@@ -115,11 +115,28 @@ chatContainer { selectedBuffer, buffers } =
       Just Nothing -> [ HH.text "Invalid selected buffer!" ]
       Just (Just { history }) ->
         map
-          ( \{ message } -> HH.p
-              [ HP.class_ $ HH.ClassName "px-2 py-1" ]
-              [ HH.text message ]
+          ( \{ message } ->
+              HH.p
+                [ HP.class_ $ HH.ClassName "px-2 py-1" ]
+                $ renderMessage message
           )
           history
+
+  renderMessage message =
+    map
+      ( \{ content, color } ->
+          case color of
+            0 -> HH.text content
+            n -> HH.em
+              [ HP.class_ $ HH.ClassName $ "not-italic " <> getColor n ]
+              [ HH.text content ]
+      )
+      message
+    where
+    getColor =
+      case _ of
+        31 -> "text-red-500"
+        _ -> ""
 
 loginForm :: forall cs m. State -> H.ComponentHTML Action cs m
 loginForm { address, password, connection } =
