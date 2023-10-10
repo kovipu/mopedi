@@ -8,6 +8,7 @@ import Mopedi.WeeChatParser (parseWeeChatMsg, WeeChatMessage(..), HistoryRow)
 
 import Control.Monad.Trans.Class (lift)
 import Data.Array as Array
+import Data.Array ((:))
 import Data.Either (Either(..))
 import Data.Foldable (foldl, find)
 import Data.Map (Map)
@@ -115,14 +116,23 @@ chatContainer { selectedBuffer, buffers } =
       Just Nothing -> [ HH.text "Invalid selected buffer!" ]
       Just (Just { history }) ->
         map
-          ( \{ message } ->
-              HH.p
-                [ HP.class_ $ HH.ClassName "px-2 py-1" ]
-                $ renderMessage message
+          ( \{ message, prefix } ->
+              HH.div
+                []
+                $
+                  ( HH.p
+                      [ HP.class_ $ HH.ClassName "px-2 py-1 font-bold" ]
+                      $ renderColoredText prefix
+                  )
+                    :
+                      [ HH.p
+                          [ HP.class_ $ HH.ClassName "px-2 py-1" ]
+                          $ renderColoredText message
+                      ]
           )
           history
 
-  renderMessage message =
+  renderColoredText message =
     map
       ( \{ content, color } ->
           case color of

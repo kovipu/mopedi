@@ -49,7 +49,7 @@ type HistoryRow =
   { message :: Array ColoredString
   , buffer :: String
   , date :: String
-  , prefix :: Maybe String
+  , prefix :: Array ColoredString
   }
 
 type ColoredString = { color :: Int, content :: String }
@@ -100,7 +100,7 @@ parseHistory = do
     message <- parseColoredString
     buffer <- parseShortString
     date <- parseShortString
-    prefix <- parseString
+    prefix <- parseColoredString
     pure { message, buffer, date, prefix }
   pure history
 
@@ -131,31 +131,34 @@ parseStringN length = do
 
 parseColoredString :: Parser (Array ColoredString)
 parseColoredString = do
-  str <- parseNonEmptyString
-  liftEither $ runParser str do
-    let
-      sep = ''
-      sepCodePoint = codePointFromChar sep
-      parseTillSep = takeWhile (_ /= sepCodePoint)
-    arr <- parseTillSep `sepBy` String.char sep
-    { head, tail } <- liftMaybe (const "impossible!") $ uncons arr
-    let
-      headColors =
-        case head of
-          "" -> []
-          s -> [ { color: 0, content: s } ]
-    tailColors <- liftEither $ traverse (flip runParser parseColor) tail
-    pure $ headColors <> fromFoldable tailColors
-  where
-  parseColor = do
-    -- What does the star do?
-    _ <- optional $ String.char '*'
-    -- What does the F do?
-    _ <- optional $ do
-      _ <- String.char 'F'
-      optional $ String.char '1'
-    colorCode <- String.takeN 2
-    color <- liftMaybe (const $ "Color was not an integer: " <> colorCode) $ fromString colorCode
-    content <- String.rest
-    pure { color, content }
+  str <- parseString
+  case str of
+    Nothing -> pure []
+    Just s ->
+      liftEither $ runParser s do
+        let
+          sep = ''
+          sepCodePoint = codePointFromChar sep
+          parseTillSep = takeWhile (_ /= sepCodePoint)
+        arr <- parseTillSep `sepBy` String.char sep
+        { head, tail } <- liftMaybe (const "impossible!") $ uncons arr
+        let
+          headColors =
+            case head of
+              "" -> []
+              h -> [ { color: 0, content: h } ]
+        tailColors <- liftEither $ traverse (flip runParser parseColor) tail
+        pure $ headColors <> fromFoldable tailColors
+      where
+      parseColor = do
+        -- What does the star do?
+        _ <- optional $ String.char '*'
+        -- What does the F do?
+        _ <- optional $ do
+          _ <- String.char 'F'
+          optional $ String.char '1'
+        colorCode <- String.takeN 2
+        color <- liftMaybe (const $ "Color was not an integer: " <> colorCode) $ fromString colorCode
+        content <- String.rest
+        pure { color, content }
 
