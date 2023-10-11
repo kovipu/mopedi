@@ -24,7 +24,7 @@ import Effect (Effect)
 import Effect.Class (liftEffect)
 import Effect.Exception (catchException, message)
 import Parsing (runParserT, runParser, fail, ParserT, ParseError, liftExceptT, liftMaybe)
-import Parsing.Combinators (replicateA, sepBy, optional)
+import Parsing.Combinators (replicateA, sepBy, optional, (<|>), try)
 import Parsing.String as String
 import Parsing.String.Basic (takeWhile)
 import Parsing.DataView (anyInt32be, anyInt8, satisfyInt8, takeN)
@@ -154,11 +154,13 @@ parseColoredString = do
         -- What does the star do?
         _ <- optional $ String.char '*'
         -- What does the F do?
-        _ <- optional $ do
-          _ <- String.char 'F'
-          optional $ String.char '1'
-        colorCode <- String.takeN 2
-        color <- liftMaybe (const $ "Color was not an integer: " <> colorCode) $ fromString colorCode
+        _ <- optional $ String.char 'F'
+        -- TODO: find a way to find the colorCode length.
+        color <- try (parseNumberN 3) <|> parseNumberN 2
         content <- String.rest
         pure { color, content }
+
+      parseNumberN n = do
+         colorCode <- String.takeN n
+         liftMaybe (const $ "Color was not an integer: " <> colorCode) $ fromString colorCode
 

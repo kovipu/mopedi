@@ -82,7 +82,7 @@ render state@{ connection } =
 bufferList :: forall cs m. State -> H.ComponentHTML Action cs m
 bufferList { buffers, selectedBuffer } =
   HH.div
-    [ HP.class_ $ HH.ClassName "h-full w-56 flex flex-col p-2" ]
+    [ HP.class_ $ HH.ClassName "h-full w-56 flex flex-col px-3 py-2" ]
     bufferButtons
   where
   bufferButtons =
@@ -121,12 +121,12 @@ chatContainer { selectedBuffer, buffers } =
                 []
                 $
                   ( HH.p
-                      [ HP.class_ $ HH.ClassName "px-2 py-1 font-bold" ]
+                      [ HP.class_ $ HH.ClassName "px-3 py-1 font-bold" ]
                       $ renderColoredText prefix
                   )
                     :
                       [ HH.p
-                          [ HP.class_ $ HH.ClassName "px-2 py-1" ]
+                          [ HP.class_ $ HH.ClassName "px-3 py-1" ]
                           $ renderColoredText message
                       ]
           )
