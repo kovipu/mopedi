@@ -93,8 +93,9 @@ bufferList { buffers, selectedBuffer } =
   bufferButton { name, ppath } =
     HH.button
       [ HP.class_ $ HH.ClassName $
-          if selected then "bg-gray-300 rounded"
-          else ""
+          (if selected then "bg-gray-300 rounded"
+          else "")
+          <> " text-left px-3 py-1"
       , HE.onClick $ const $ ChangeBuffer ppath
       ]
       [ HH.text name ]
@@ -104,8 +105,8 @@ bufferList { buffers, selectedBuffer } =
 chatContainer :: forall cs m. State -> H.ComponentHTML Action cs m
 chatContainer { selectedBuffer, buffers } =
   HH.div
-    [ HP.class_ $ HH.ClassName "h-full w-full flex flex-col bg-white w-full overflow-y-auto" ]
-    messages
+    [ HP.class_ $ HH.ClassName "h-full w-full flex flex-col-reverse bg-white w-full overflow-y-auto" ]
+    $ Array.reverse messages
   where
   selected =
     (\b -> Map.lookup b buffers) <$> selectedBuffer
@@ -145,8 +146,15 @@ chatContainer { selectedBuffer, buffers } =
     where
     getColor =
       case _ of
-        31 -> "text-red-500"
-        _ -> ""
+        131 -> "text-red-600"
+        5 -> "text-emerald-700"
+        6 -> "text-gray-400"
+        7 -> "text-yellow-600"
+        12 -> "text-purple-700"
+        13 -> "text-teal-700"
+        14 -> "text-rose-700"
+        15 -> "text-lime-700" -- own user color
+        n -> "color-" <> show n
 
 loginForm :: forall cs m. State -> H.ComponentHTML Action cs m
 loginForm { address, password, connection } =
