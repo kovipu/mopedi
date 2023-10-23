@@ -2,13 +2,12 @@ module Mopedi.RootComponent where
 
 import Prelude
 
-import Mopedi.AppM (class LogMessages, logMessage, WebSocketEvent(..), class WeeChat, initConnection, authenticate, requestBuffers, requestHistory)
+import Mopedi.AppM (class LogMessages, logMessage, WebSocketEvent(..), class WeeChat, initConnection, authenticate, requestBuffers, requestHistory, requestSync)
 import Mopedi.Store (ConnectionState(..))
 import Mopedi.WeeChatParser (parseWeeChatMsg, WeeChatMessage(..), HistoryRow)
 
 import Control.Monad.Trans.Class (lift)
 import Data.Array as Array
-import Data.Array ((:))
 import Data.Either (Either(..))
 import Data.Foldable (foldl, find)
 import Data.Map (Map)
@@ -93,9 +92,10 @@ bufferList { buffers, selectedBuffer } =
   bufferButton { name, ppath } =
     HH.button
       [ HP.class_ $ HH.ClassName $
-          (if selected then "bg-gray-300 rounded"
-          else "")
-          <> " text-left px-3 py-1"
+          "text-left px-3 py-1"
+            <>
+              if selected then " bg-gray-300 rounded"
+              else ""
       , HE.onClick $ const $ ChangeBuffer ppath
       ]
       [ HH.text name ]
@@ -120,16 +120,13 @@ chatContainer { selectedBuffer, buffers } =
           ( \{ message, prefix } ->
               HH.div
                 []
-                $
-                  ( HH.p
-                      [ HP.class_ $ HH.ClassName "px-3 py-1 font-bold" ]
-                      $ renderColoredText prefix
-                  )
-                    :
-                      [ HH.p
-                          [ HP.class_ $ HH.ClassName "px-3 py-1" ]
-                          $ renderColoredText message
-                      ]
+                [ HH.p
+                    [ HP.class_ $ HH.ClassName "px-3 pt-3 font-bold" ]
+                    (renderColoredText prefix)
+                , HH.p
+                    [ HP.class_ $ HH.ClassName "px-3 py-1" ]
+                    $ renderColoredText message
+                ]
           )
           history
 
@@ -154,6 +151,7 @@ chatContainer { selectedBuffer, buffers } =
         13 -> "text-teal-700"
         14 -> "text-rose-700"
         15 -> "text-lime-700" -- own user color
+        246 -> "text-gray-400"
         n -> "color-" <> show n
 
 loginForm :: forall cs m. State -> H.ComponentHTML Action cs m
@@ -276,6 +274,18 @@ handleAction = case _ of
                 )
                 bufferState
                 history
+          Right (NewLine histRow) ->
+            H.modify_
+              ( \st@{ buffers } ->
+                  st { buffers = insertMessage buffers }
+              )
+            where
+            insertMessage :: Map String BufferState -> Map String BufferState
+            insertMessage bufferState =
+              Map.update
+                (\prev@{ history } -> Just $ prev { history = Array.snoc history histRow })
+                histRow.buffer
+                bufferState
 
       WebSocketOpen _ -> do
         logMessage "Socket opened, authenticating."
@@ -285,6 +295,7 @@ handleAction = case _ of
             authenticate socket password
             requestBuffers socket
             requestHistory socket
+            requestSync socket
           _ -> logMessage "Initialization failed, socket was closed."
 
       WebSocketClose _ -> do

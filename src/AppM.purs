@@ -2,8 +2,6 @@ module Mopedi.AppM where
 
 import Prelude
 
-import Mopedi.Store (ConnectionState(..))
-
 import Control.Monad.Trans.Class (lift)
 import Data.ArrayBuffer.Types (ArrayBuffer)
 import Data.Maybe (Maybe(..))
@@ -19,7 +17,7 @@ import Halogen as H
 import Halogen.Subscription as HS
 import Halogen.Query.Event as HQE
 import Halogen (HalogenM)
-import Halogen.Store.Monad (class MonadStore, StoreT, runStoreT, updateStore, getStore)
+import Halogen.Store.Monad (class MonadStore, StoreT, runStoreT)
 import Safe.Coerce (coerce)
 import Web.Event.Event (Event, EventType)
 import Web.Socket.Event.EventTypes (onMessage, onOpen, onClose, onError) as WebSocket
@@ -70,6 +68,8 @@ class Monad m <= WeeChat m where
   requestBuffers :: WebSocket -> m Unit
 
   requestHistory :: WebSocket -> m Unit
+
+  requestSync :: WebSocket -> m Unit
 
 -- Concrete implementations for the capabilites.
 instance logMessagesAppM :: LogMessages AppM where
@@ -127,3 +127,7 @@ instance weeChatAppM :: WeeChat AppM where
     WebSocket.sendString socket "(history) hdata buffer:gui_buffers(*)/own_lines/first_line(*)/data message,buffer,date,prefix\n"
       # liftEffect
 
+  requestSync :: WebSocket -> AppM Unit
+  requestSync socket =
+    WebSocket.sendString socket "sync\n"
+      # liftEffect
