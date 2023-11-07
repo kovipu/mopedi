@@ -2,25 +2,27 @@ module Mopedi.RootComponent where
 
 import Prelude
 
-import Mopedi.AppM (class LogMessages, logMessage, WebSocketEvent(..), class WeeChat, initConnection, authenticate, requestBuffers, requestHistory, requestSync)
-import Mopedi.Store (ConnectionState(..))
-import Mopedi.WeeChatParser (parseWeeChatMsg, WeeChatMessage(..), HistoryRow)
-
 import Control.Monad.Trans.Class (lift)
+import DOM.HTML.Indexed.InputType (InputType(..))
+import Data.Array ((:))
 import Data.Array as Array
+import Data.Array.NonEmpty as NonEmptyArray
 import Data.Either (Either(..))
 import Data.Foldable (foldl, find)
+import Data.Function (on)
 import Data.Map (Map)
 import Data.Map as Map
 import Data.Maybe (Maybe(..), fromMaybe)
-import Data.Tuple.Nested ((/\))
 import Data.String (null)
-import DOM.HTML.Indexed.InputType (InputType(..))
+import Data.Tuple.Nested ((/\))
 import Effect.Class (class MonadEffect, liftEffect)
 import Halogen as H
 import Halogen.HTML as HH
 import Halogen.HTML.Events as HE
 import Halogen.HTML.Properties as HP
+import Mopedi.AppM (class LogMessages, logMessage, WebSocketEvent(..), class WeeChat, initConnection, authenticate, requestBuffers, requestHistory, requestSync)
+import Mopedi.Store (ConnectionState(..))
+import Mopedi.WeeChatParser (parseWeeChatMsg, WeeChatMessage(..), HistoryRow)
 
 type State =
   { address :: String
@@ -116,21 +118,29 @@ chatContainer { selectedBuffer, buffers } =
       Nothing -> [ HH.text "No buffer selected." ]
       Just Nothing -> [ HH.text "Invalid selected buffer!" ]
       Just (Just { history }) ->
-        map
-          ( \{ message, prefix } ->
-              HH.div
-                []
-                [ HH.p
-                    [ HP.class_ $ HH.ClassName "px-3 pt-3 font-bold" ]
-                    (renderColoredText prefix)
-                , HH.p
-                    [ HP.class_ $ HH.ClassName "px-3 py-1" ]
-                    $ renderColoredText message
-                ]
-          )
-          history
+        Array.groupBy ((==) `on` _.prefix) history
+          # map
+              ( \group ->
+                  HH.div
+                    []
+                    ( HH.p
+                        [ HP.class_ $ HH.ClassName "px-3 pt-3 font-bold" ]
+                        (renderColoredText (NonEmptyArray.head group).prefix)
+                        :
+                          ( ( map
+                                ( \{ message } ->
+                                    HH.p
+                                      [ HP.class_ $ HH.ClassName "px-3 py-1" ]
+                                      $ renderColoredText message
+                                )
+                                group
+                            )
+                              # NonEmptyArray.toArray
+                          )
+                    )
+              )
 
-  renderColoredText message =
+  renderColoredText coloredText =
     map
       ( \{ content, color } ->
           case color of
@@ -139,7 +149,7 @@ chatContainer { selectedBuffer, buffers } =
               [ HP.class_ $ HH.ClassName $ "not-italic " <> getColor n ]
               [ HH.text content ]
       )
-      message
+      coloredText
     where
     getColor =
       case _ of
